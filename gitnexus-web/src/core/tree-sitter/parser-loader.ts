@@ -42,6 +42,7 @@ const getWasmPath = (language: SupportedLanguages, filePath?: string): string =>
         [SupportedLanguages.PHP]: '/wasm/php/tree-sitter-php.wasm',
         [SupportedLanguages.Ruby]: '/wasm/ruby/tree-sitter-ruby.wasm',
         [SupportedLanguages.Swift]: '/wasm/swift/tree-sitter-swift.wasm',
+        [SupportedLanguages.ObjectiveC]: '/wasm/objc/tree-sitter-objc.wasm',
     };
     
     return languageFileMap[language];

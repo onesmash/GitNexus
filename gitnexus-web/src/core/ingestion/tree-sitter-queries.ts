@@ -429,8 +429,8 @@ export const RUBY_QUERIES = `
   name: (constant) @heritage.class
   superclass: (superclass
     (constant) @heritage.extends)) @heritage`;
-    
-// Swift queries - works with tree-sitter-swift
+
+// Swift queries — web-tree-sitter grammar
 export const SWIFT_QUERIES = `
 ; Classes
 (class_declaration "class" name: (type_identifier) @name) @definition.class
@@ -483,6 +483,33 @@ export const SWIFT_QUERIES = `
   (inheritance_specifier inherits_from: (user_type (type_identifier) @heritage.extends))) @heritage
 `;
 
+// Objective-C queries — web-tree-sitter grammar
+export const OBJC_QUERIES = `
+; ── Definitions ──────────────────────────────────────────────────────────────
+(class_interface     "@interface"     . (identifier) @name) @definition.class
+(class_implementation "@implementation" . (identifier) @name) @definition.class
+(protocol_declaration "@protocol"     . (identifier) @name) @definition.interface
+
+(class_interface
+  (method_declaration (method_type) . (identifier) @name)) @definition.method
+(class_implementation
+  (implementation_definition (method_definition (method_type) . (identifier) @name))) @definition.method
+(protocol_declaration
+  (method_declaration (method_type) . (identifier) @name)) @definition.method
+
+; ── Imports ──────────────────────────────────────────────────────────────────
+(preproc_include path: (string_literal (string_content) @import.source)) @import
+
+; ── Calls ────────────────────────────────────────────────────────────────────
+(message_expression receiver: (_) . (identifier) @call.name) @call
+
+; ── Heritage ─────────────────────────────────────────────────────────────────
+(class_interface "@interface" . (identifier) @heritage.class
+  superclass: (identifier) @heritage.extends) @heritage
+(class_interface "@interface" . (identifier) @heritage.class
+  (parameterized_arguments (type_name (type_identifier) @heritage.implements))) @heritage
+`;
+
 export const LANGUAGE_QUERIES: Record<SupportedLanguages, string> = {
   [SupportedLanguages.TypeScript]: TYPESCRIPT_QUERIES,
   [SupportedLanguages.JavaScript]: JAVASCRIPT_QUERIES,
@@ -496,5 +523,6 @@ export const LANGUAGE_QUERIES: Record<SupportedLanguages, string> = {
   [SupportedLanguages.PHP]: PHP_QUERIES,
   [SupportedLanguages.Ruby]: RUBY_QUERIES,
   [SupportedLanguages.Swift]: SWIFT_QUERIES,
+  [SupportedLanguages.ObjectiveC]: OBJC_QUERIES,
 };
  

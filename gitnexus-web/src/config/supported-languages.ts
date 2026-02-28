@@ -11,4 +11,5 @@ export enum SupportedLanguages {
     PHP = 'php',
     Ruby = 'ruby',
     Swift = 'swift',
+    ObjectiveC = 'objc',
 }

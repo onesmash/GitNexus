@@ -575,8 +575,10 @@ export const getLanguageFromFilename = (filename: string): SupportedLanguages | 
   if (RUBY_EXTENSIONLESS_FILES.has(basename)) {
     return SupportedLanguages.Ruby;
   }
-  // Swift (extensions)
+  // Swift
   if (filename.endsWith('.swift')) return SupportedLanguages.Swift;
+  // Objective-C (.m implementation, .mm Objective-C++)
+  if (filename.endsWith('.m') || filename.endsWith('.mm')) return SupportedLanguages.ObjectiveC;
   return null;
 };
 

@@ -503,6 +503,7 @@ export const PHP_QUERIES = `
       [(name) (qualified_name)] @heritage.trait))) @heritage
 `;
 
+<<<<<<< HEAD
 // Ruby queries - works with tree-sitter-ruby
 // NOTE: Ruby uses `call` for require, include, extend, prepend, attr_* etc.
 // These are all captured as @call and routed in JS post-processing:
@@ -686,6 +687,39 @@ export const SWIFT_QUERIES = `
   (inheritance_specifier inherits_from: (user_type (type_identifier) @heritage.extends))) @heritage
 `;
 
+// Objective-C queries — tree-sitter-objc grammar
+export const OBJC_QUERIES = `
+; ── Definitions ──────────────────────────────────────────────────────────────
+(class_interface     "@interface"     . (identifier) @name) @definition.class
+(class_implementation "@implementation" . (identifier) @name) @definition.class
+(protocol_declaration "@protocol"     . (identifier) @name) @definition.interface
+
+(class_interface
+  (method_declaration (method_type) . (identifier) @name)) @definition.method
+(class_implementation
+  (implementation_definition (method_definition (method_type) . (identifier) @name))) @definition.method
+(protocol_declaration
+  (method_declaration (method_type) . (identifier) @name)) @definition.method
+
+; C functions (common in .m files)
+(function_definition declarator: (function_declarator declarator: (identifier) @name)) @definition.function
+
+; ── Imports ──────────────────────────────────────────────────────────────────
+(preproc_include path: (string_literal (string_content) @import.source)) @import
+
+; ── Calls ────────────────────────────────────────────────────────────────────
+; Anchor after receiver to capture only the first selector keyword
+(message_expression receiver: (_) . (identifier) @call.name) @call
+; C function calls within ObjC files
+(call_expression function: (identifier) @call.name) @call
+
+; ── Heritage ─────────────────────────────────────────────────────────────────
+(class_interface "@interface" . (identifier) @heritage.class
+  superclass: (identifier) @heritage.extends) @heritage
+(class_interface "@interface" . (identifier) @heritage.class
+  (parameterized_arguments (type_name (type_identifier) @heritage.implements))) @heritage
+`;
+
 export const LANGUAGE_QUERIES: Record<SupportedLanguages, string> = {
   [SupportedLanguages.TypeScript]: TYPESCRIPT_QUERIES,
   [SupportedLanguages.JavaScript]: JAVASCRIPT_QUERIES,
@@ -700,5 +734,6 @@ export const LANGUAGE_QUERIES: Record<SupportedLanguages, string> = {
   [SupportedLanguages.PHP]: PHP_QUERIES,
   [SupportedLanguages.Kotlin]: KOTLIN_QUERIES,
   [SupportedLanguages.Swift]: SWIFT_QUERIES,
+  [SupportedLanguages.ObjectiveC]: OBJC_QUERIES,
 };
  

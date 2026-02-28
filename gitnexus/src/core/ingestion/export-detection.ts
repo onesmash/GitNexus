@@ -223,6 +223,7 @@ const exportCheckers = {
   [SupportedLanguages.PHP]: phpExportChecker,
   [SupportedLanguages.Swift]: swiftExportChecker,
   [SupportedLanguages.Ruby]: (_node, _name) => true,
+  [SupportedLanguages.ObjectiveC]: (_node, _name) => true,
 } satisfies Record<SupportedLanguages, ExportChecker>;
 
 // ============================================================================
