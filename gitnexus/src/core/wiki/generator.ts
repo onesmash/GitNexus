@@ -30,9 +30,8 @@ import {
 import { generateHTMLViewer } from './html-viewer.js';
 
 import {
-  callLLM,
   estimateTokens,
-  type LLMConfig,
+  type LLMCaller,
   type CallLLMOptions,
 } from './llm-client.js';
 
@@ -94,7 +93,7 @@ export class WikiGenerator {
   private storagePath: string;
   private wikiDir: string;
   private kuzuPath: string;
-  private llmConfig: LLMConfig;
+  private llmCaller: LLMCaller;
   private maxTokensPerModule: number;
   private concurrency: number;
   private options: WikiOptions;
@@ -105,7 +104,7 @@ export class WikiGenerator {
     repoPath: string,
     storagePath: string,
     kuzuPath: string,
-    llmConfig: LLMConfig,
+    llmCaller: LLMCaller,
     options: WikiOptions = {},
     onProgress?: ProgressCallback,
   ) {
@@ -114,7 +113,7 @@ export class WikiGenerator {
     this.wikiDir = path.join(storagePath, WIKI_DIR);
     this.kuzuPath = kuzuPath;
     this.options = options;
-    this.llmConfig = llmConfig;
+    this.llmCaller = llmCaller;
     this.maxTokensPerModule = options.maxTokensPerModule ?? DEFAULT_MAX_TOKENS_PER_MODULE;
     this.concurrency = options.concurrency ?? 3;
     const progressFn = onProgress || (() => {});
@@ -295,7 +294,7 @@ export class WikiGenerator {
     await this.saveWikiMeta({
       fromCommit: currentCommit,
       generatedAt: new Date().toISOString(),
-      model: this.llmConfig.model,
+      model: this.options.model || 'unknown',
       moduleFiles,
       moduleTree,
     });
@@ -330,8 +329,8 @@ export class WikiGenerator {
       DIRECTORY_TREE: dirTree,
     });
 
-    const response = await callLLM(
-      prompt, this.llmConfig, GROUPING_SYSTEM_PROMPT,
+    const response = await this.llmCaller(
+      prompt, GROUPING_SYSTEM_PROMPT,
       this.streamOpts('Grouping files', 15),
     );
     const grouping = this.parseGroupingResponse(response.content, files);
@@ -487,8 +486,8 @@ export class WikiGenerator {
       PROCESSES: formatProcesses(processes),
     });
 
-    const response = await callLLM(
-      prompt, this.llmConfig, MODULE_SYSTEM_PROMPT,
+    const response = await this.llmCaller(
+      prompt, MODULE_SYSTEM_PROMPT,
       this.streamOpts(node.name),
     );
 
@@ -530,8 +529,8 @@ export class WikiGenerator {
       CROSS_PROCESSES: formatProcesses(processes),
     });
 
-    const response = await callLLM(
-      prompt, this.llmConfig, PARENT_SYSTEM_PROMPT,
+    const response = await this.llmCaller(
+      prompt, PARENT_SYSTEM_PROMPT,
       this.streamOpts(node.name),
     );
 
@@ -577,8 +576,8 @@ export class WikiGenerator {
       TOP_PROCESSES: formatProcesses(topProcesses),
     });
 
-    const response = await callLLM(
-      prompt, this.llmConfig, OVERVIEW_SYSTEM_PROMPT,
+    const response = await this.llmCaller(
+      prompt, OVERVIEW_SYSTEM_PROMPT,
       this.streamOpts('Generating overview', 88),
     );
 
@@ -693,7 +692,7 @@ export class WikiGenerator {
       ...existingMeta,
       fromCommit: currentCommit,
       generatedAt: new Date().toISOString(),
-      model: this.llmConfig.model,
+      model: this.options.model || 'unknown',
     });
 
     this.onProgress('done', 100, 'Incremental update complete');

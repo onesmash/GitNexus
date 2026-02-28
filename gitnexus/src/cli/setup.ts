@@ -29,12 +29,12 @@ function getMcpEntry() {
   if (process.platform === 'win32') {
     return {
       command: 'cmd',
-      args: ['/c', 'npx', '-y', 'gitnexus@latest', 'mcp'],
+      args: ['/c', 'gitnexus', 'mcp'],
     };
   }
   return {
-    command: 'npx',
-    args: ['-y', 'gitnexus@latest', 'mcp'],
+    command: 'gitnexus',
+    args: ['mcp'],
   };
 }
 
@@ -118,7 +118,7 @@ async function setupClaudeCode(result: SetupResult): Promise<void> {
   console.log('');
   console.log('  Claude Code detected. Run this command to add GitNexus MCP:');
   console.log('');
-  console.log('    claude mcp add gitnexus -- npx -y gitnexus mcp');
+  console.log('    claude mcp add gitnexus -- gitnexus mcp');
   console.log('');
   result.configured.push('Claude Code (MCP manual step printed)');
 }
@@ -164,7 +164,15 @@ async function installClaudeCodeHooks(result: SetupResult): Promise<void> {
     const dest = path.join(destHooksDir, 'gitnexus-hook.cjs');
     try {
       const content = await fs.readFile(src, 'utf-8');
-      await fs.writeFile(dest, content, 'utf-8');
+      // Patch the cliPath: the hook uses __dirname-relative resolution which breaks
+      // once the file is copied to ~/.claude/hooks/gitnexus/. Replace with the
+      // absolute path to the CLI at install time so it survives the move.
+      const actualCliPath = path.join(__dirname, 'index.js').replace(/\\/g, '/');
+      const patched = content.replace(
+        /const cliPath = path\.resolve\(__dirname[^;]+;/,
+        `const cliPath = ${JSON.stringify(actualCliPath)};`,
+      );
+      await fs.writeFile(dest, patched, 'utf-8');
     } catch {
       // Script not found in source — skip
     }

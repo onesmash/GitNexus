@@ -89,6 +89,7 @@ program
   .option('--api-key <key>', 'LLM API key (saved to ~/.gitnexus/config.json)')
   .option('--concurrency <n>', 'Parallel LLM calls (default: 3)', '3')
   .option('--gist', 'Publish wiki as a public GitHub Gist after generation')
+  .option('--agent <agent>', 'Use a local agent CLI instead of an API key (claude or cursor)')
   .action(wikiCommand);
 
 program

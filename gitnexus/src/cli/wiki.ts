@@ -12,7 +12,13 @@ import cliProgress from 'cli-progress';
 import { getGitRoot, isGitRepo } from '../storage/git.js';
 import { getStoragePaths, loadMeta, loadCLIConfig, saveCLIConfig } from '../storage/repo-manager.js';
 import { WikiGenerator, type WikiOptions } from '../core/wiki/generator.js';
-import { resolveLLMConfig } from '../core/wiki/llm-client.js';
+import {
+  callLLM,
+  callAgentCLI,
+  detectAgentCLI,
+  resolveLLMConfig,
+  type LLMCaller,
+} from '../core/wiki/llm-client.js';
 
 export interface WikiCommandOptions {
   force?: boolean;
@@ -21,6 +27,7 @@ export interface WikiCommandOptions {
   apiKey?: string;
   concurrency?: string;
   gist?: boolean;
+  agent?: string;
 }
 
 /**
@@ -111,100 +118,132 @@ export const wikiCommand = async (
     return;
   }
 
-  // ── Resolve LLM config (with interactive fallback) ─────────────────
-  // Save any CLI overrides immediately
-  if (options?.apiKey || options?.model || options?.baseUrl) {
-    const existing = await loadCLIConfig();
-    const updates: Record<string, string> = {};
-    if (options.apiKey) updates.apiKey = options.apiKey;
-    if (options.model) updates.model = options.model;
-    if (options.baseUrl) updates.baseUrl = options.baseUrl;
-    await saveCLIConfig({ ...existing, ...updates });
-    console.log('  Config saved to ~/.gitnexus/config.json\n');
-  }
+  // ── Resolve LLM caller ──────────────────────────────────────────────
+  let llmCaller: LLMCaller;
 
-  const savedConfig = await loadCLIConfig();
-  const hasSavedConfig = !!(savedConfig.apiKey && savedConfig.baseUrl);
-  const hasCLIOverrides = !!(options?.apiKey || options?.model || options?.baseUrl);
+  if (options?.agent) {
+    // --agent flag: zero-config path, no config read/write
+    const agentName = options.agent as 'claude' | 'cursor';
+    const agentModel = options.model;
+    llmCaller = (p, sys, opts) => callAgentCLI(p, agentName, agentModel, sys, opts);
+  } else {
+    // HTTP path: save any CLI overrides immediately
+    if (options?.apiKey || options?.model || options?.baseUrl) {
+      const existing = await loadCLIConfig();
+      const updates: Record<string, string> = {};
+      if (options.apiKey) updates.apiKey = options.apiKey;
+      if (options.model) updates.model = options.model;
+      if (options.baseUrl) updates.baseUrl = options.baseUrl;
+      await saveCLIConfig({ ...existing, ...updates });
+      console.log('  Config saved to ~/.gitnexus/config.json\n');
+    }
 
-  let llmConfig = await resolveLLMConfig({
-    model: options?.model,
-    baseUrl: options?.baseUrl,
-    apiKey: options?.apiKey,
-  });
+    const savedConfig = await loadCLIConfig();
+    const hasSavedConfig = !!(savedConfig.apiKey && savedConfig.baseUrl);
+    const hasCLIOverrides = !!(options?.apiKey || options?.model || options?.baseUrl);
 
-  // Run interactive setup if no saved config and no CLI flags provided
-  // (even if env vars exist — let user explicitly choose their provider)
-  if (!hasSavedConfig && !hasCLIOverrides) {
-    if (!process.stdin.isTTY) {
-      if (!llmConfig.apiKey) {
-        console.log('  Error: No LLM API key found.');
-        console.log('  Set OPENAI_API_KEY or GITNEXUS_API_KEY environment variable,');
-        console.log('  or pass --api-key <key>.\n');
-        process.exitCode = 1;
-        return;
-      }
-      // Non-interactive with env var — just use it
-    } else {
-      console.log('  No LLM configured. Let\'s set it up.\n');
-      console.log('  Supports OpenAI, OpenRouter, or any OpenAI-compatible API.\n');
+    let llmConfig = await resolveLLMConfig({
+      model: options?.model,
+      baseUrl: options?.baseUrl,
+      apiKey: options?.apiKey,
+    });
 
-      // Provider selection
-      console.log('  [1] OpenAI (api.openai.com)');
-      console.log('  [2] OpenRouter (openrouter.ai)');
-      console.log('  [3] Custom endpoint\n');
-
-      const choice = await prompt('  Select provider (1/2/3): ');
-
-      let baseUrl: string;
-      let defaultModel: string;
-
-      if (choice === '2') {
-        baseUrl = 'https://openrouter.ai/api/v1';
-        defaultModel = 'minimax/minimax-m2.5';
-      } else if (choice === '3') {
-        baseUrl = await prompt('  Base URL (e.g. http://localhost:11434/v1): ');
-        if (!baseUrl) {
-          console.log('\n  No URL provided. Aborting.\n');
+    // Run interactive setup if no saved config and no CLI flags provided
+    if (!hasSavedConfig && !hasCLIOverrides) {
+      if (!process.stdin.isTTY) {
+        if (!llmConfig.apiKey) {
+          console.log('  Error: No LLM API key found.');
+          console.log('  Set OPENAI_API_KEY or GITNEXUS_API_KEY environment variable,');
+          console.log('  or pass --api-key <key>.\n');
           process.exitCode = 1;
           return;
         }
-        defaultModel = 'gpt-4o-mini';
+        // Non-interactive with env var — just use it
       } else {
-        baseUrl = 'https://api.openai.com/v1';
-        defaultModel = 'gpt-4o-mini';
-      }
+        console.log('  No LLM configured. Let\'s set it up.\n');
 
-      // Model
-      const modelInput = await prompt(`  Model (default: ${defaultModel}): `);
-      const model = modelInput || defaultModel;
+        // Probe for agent CLIs in PATH and build zero-config options
+        const { execFileSync: _execFS } = await import('child_process');
+        const agentOptions: Array<{ label: string; agent: 'claude' | 'cursor' }> = [];
+        try { _execFS('claude', ['--version'], { stdio: 'ignore', timeout: 5000 }); agentOptions.push({ label: 'Claude Code (no API key needed)', agent: 'claude' }); } catch {}
+        try { _execFS('agent', ['--version'], { stdio: 'ignore', timeout: 5000 }); agentOptions.push({ label: 'Cursor (no API key needed) (beta)', agent: 'cursor' }); } catch {}
 
-      // API key — pre-fill hint if env var exists
-      const envKey = process.env.GITNEXUS_API_KEY || process.env.OPENAI_API_KEY || '';
-      let key: string;
-      if (envKey) {
-        const masked = envKey.slice(0, 6) + '...' + envKey.slice(-4);
-        const useEnv = await prompt(`  Use existing env key (${masked})? (Y/n): `);
-        if (!useEnv || useEnv.toLowerCase() === 'y' || useEnv.toLowerCase() === 'yes') {
-          key = envKey;
-        } else {
-          key = await prompt('  API key: ', true);
+        // Print menu
+        let menuIdx = 1;
+        for (const ao of agentOptions) {
+          console.log(`  [${menuIdx++}] ${ao.label}`);
         }
-      } else {
-        key = await prompt('  API key: ', true);
+        const openAiIdx = menuIdx++;
+        const openRouterIdx = menuIdx++;
+        const customIdx = menuIdx;
+        console.log(`  [${openAiIdx}] OpenAI (api.openai.com)`);
+        console.log(`  [${openRouterIdx}] OpenRouter (openrouter.ai)`);
+        console.log(`  [${customIdx}] Custom endpoint\n`);
+
+        const validChoices = Array.from({ length: customIdx }, (_, i) => String(i + 1));
+        const choice = await prompt(`  Select provider (${validChoices.join('/')}): `);
+        const choiceNum = parseInt(choice, 10);
+
+        // Agent selected?
+        const agentChoice = agentOptions[choiceNum - 1];
+        if (agentChoice) {
+          const agentModel = options?.model;
+          llmCaller = (p, sys, opts) => callAgentCLI(p, agentChoice.agent, agentModel, sys, opts);
+          // Do NOT save config for agent choices — fall through to generator
+        } else {
+          // HTTP provider
+          let baseUrl: string;
+          let defaultModel: string;
+
+          if (choiceNum === openRouterIdx) {
+            baseUrl = 'https://openrouter.ai/api/v1';
+            defaultModel = 'minimax/minimax-m2.5';
+          } else if (choiceNum === customIdx) {
+            baseUrl = await prompt('  Base URL (e.g. http://localhost:11434/v1): ');
+            if (!baseUrl) {
+              console.log('\n  No URL provided. Aborting.\n');
+              process.exitCode = 1;
+              return;
+            }
+            defaultModel = 'gpt-4o-mini';
+          } else {
+            baseUrl = 'https://api.openai.com/v1';
+            defaultModel = 'gpt-4o-mini';
+          }
+
+          const modelInput = await prompt(`  Model (default: ${defaultModel}): `);
+          const model = modelInput || defaultModel;
+
+          const envKey = process.env.GITNEXUS_API_KEY || process.env.OPENAI_API_KEY || '';
+          let key: string;
+          if (envKey) {
+            const masked = envKey.slice(0, 6) + '...' + envKey.slice(-4);
+            const useEnv = await prompt(`  Use existing env key (${masked})? (Y/n): `);
+            if (!useEnv || useEnv.toLowerCase() === 'y' || useEnv.toLowerCase() === 'yes') {
+              key = envKey;
+            } else {
+              key = await prompt('  API key: ', true);
+            }
+          } else {
+            key = await prompt('  API key: ', true);
+          }
+
+          if (!key) {
+            console.log('\n  No key provided. Aborting.\n');
+            process.exitCode = 1;
+            return;
+          }
+
+          await saveCLIConfig({ apiKey: key, baseUrl, model });
+          console.log('  Config saved to ~/.gitnexus/config.json\n');
+          llmConfig = { ...llmConfig, apiKey: key, baseUrl, model };
+        }
       }
+    }
 
-      if (!key) {
-        console.log('\n  No key provided. Aborting.\n');
-        process.exitCode = 1;
-        return;
-      }
-
-      // Save
-      await saveCLIConfig({ apiKey: key, baseUrl, model });
-      console.log('  Config saved to ~/.gitnexus/config.json\n');
-
-      llmConfig = { ...llmConfig, apiKey: key, baseUrl, model };
+    // llmCaller may have been set above (agent interactive choice); only set from config if not yet set
+    if (!llmCaller!) {
+      llmCaller = (p, sys, opts) => callLLM(p, llmConfig, sys, opts);
     }
   }
 
@@ -248,7 +287,7 @@ export const wikiCommand = async (
     repoPath,
     storagePath,
     kuzuPath,
-    llmConfig,
+    llmCaller,
     wikiOptions,
     (phase, percent, detail) => {
       const label = detail || phase;
@@ -300,7 +339,15 @@ export const wikiCommand = async (
     clearInterval(elapsedTimer);
     bar.stop();
 
-    if (err.message?.includes('No source files')) {
+    if (err.code === 'ENOENT' && err.message?.includes('claude')) {
+      console.log('\n  Error: claude CLI not found in PATH.');
+      console.log('  Install Claude Code at https://claude.ai/download\n');
+    } else if (err.code === 'ENOENT' && err.message?.includes('agent')) {
+      console.log('\n  Error: agent not found in PATH.');
+      console.log('  Ensure Cursor is installed and its CLI is in PATH.\n');
+    } else if (err.message?.includes('timed out (120s)')) {
+      console.log(`\n  Error: ${err.message}\n`);
+    } else if (err.message?.includes('No source files')) {
       console.log(`\n  ${err.message}\n`);
     } else if (err.message?.includes('API key') || err.message?.includes('API error')) {
       console.log(`\n  LLM Error: ${err.message}\n`);

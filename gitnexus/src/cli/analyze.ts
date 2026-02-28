@@ -352,7 +352,8 @@ export const analyzeCommand = async (
       const m = w.match(/\((\d+) edges\)/);
       return sum + (m ? parseInt(m[1]) : 0);
     }, 0);
-    console.log(`  Note: ${totalFallback} edges across ${kuzuWarnings.length} types inserted via fallback (schema will be updated in next release)`);
+    console.log(`  Note: ${totalFallback} edges across ${kuzuWarnings.length} types inserted via fallback (unexpected FROM→TO pairs)`);
+    for (const w of kuzuWarnings) console.log(`    - ${w}`);
   }
 
   try {

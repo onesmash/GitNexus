@@ -20,7 +20,7 @@ Keep this managed block so 'openspec update' can refresh the instructions.
 <!-- gitnexus:start -->
 # GitNexus MCP
 
-This project is indexed by GitNexus as **GitNexus** (1413 symbols, 3656 relationships, 109 execution flows).
+This project is indexed by GitNexus as **GitNexus** (1452 symbols, 3715 relationships, 111 execution flows).
 
 ## Always Start Here
 

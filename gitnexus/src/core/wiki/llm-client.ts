@@ -1,11 +1,14 @@
 /**
  * LLM Client for Wiki Generation
- * 
+ *
  * OpenAI-compatible API client using native fetch.
  * Supports OpenAI, Azure, LiteLLM, Ollama, and any OpenAI-compatible endpoint.
- * 
+ * Also supports agent CLI subprocess backends (Claude Code, Cursor).
+ *
  * Config priority: CLI flags > env vars > defaults
  */
+
+import { execFileSync, spawn } from 'child_process';
 
 export interface LLMConfig {
   apiKey: string;
@@ -61,6 +64,136 @@ export function estimateTokens(text: string): number {
 
 export interface CallLLMOptions {
   onChunk?: (charsReceived: number) => void;
+}
+
+/**
+ * Pluggable LLM caller function type.
+ * Abstracts over HTTP-based and subprocess-based backends.
+ */
+export type LLMCaller = (prompt: string, systemPrompt?: string, opts?: CallLLMOptions) => Promise<LLMResponse>;
+
+// ─── Agent CLI backend ────────────────────────────────────────────────────────
+
+let _detectedAgent: 'claude' | 'cursor' | null | undefined = undefined;
+
+/**
+ * Probe PATH for a supported agent CLI. Returns the first found, or null.
+ * Result is cached per process.
+ */
+export function detectAgentCLI(): 'claude' | 'cursor' | null {
+  if (_detectedAgent !== undefined) return _detectedAgent;
+  try { execFileSync('claude', ['--version'], { stdio: 'ignore', timeout: 5000 }); _detectedAgent = 'claude'; return 'claude'; } catch {}
+  try { execFileSync('agent', ['--version'], { stdio: 'ignore', timeout: 5000 }); _detectedAgent = 'cursor'; return 'cursor'; } catch {}
+  _detectedAgent = null;
+  return null;
+}
+
+const AGENT_TIMEOUT_MS = 120_000;
+
+/**
+ * Call a local agent CLI subprocess (Claude Code or Cursor) with a prompt.
+ *
+ * For Claude Code: passes systemPrompt as the -p argument (short instruction) and
+ * pipes the large user prompt via stdin. This follows Claude Code's documented pattern:
+ *   cat content.txt | claude -p "instruction"
+ * This avoids ARG_MAX (E2BIG) — only the short instruction goes as a CLI arg.
+ *
+ * For Cursor: concatenates system+user prompt and pipes the whole thing via stdin.
+ *
+ * Enforces a 120-second hard timeout with SIGKILL.
+ */
+export function callAgentCLI(
+  prompt: string,
+  agent: 'claude' | 'cursor',
+  model?: string,
+  systemPrompt?: string,
+  options?: CallLLMOptions,
+): Promise<LLMResponse> {
+  let binary: string;
+  let args: string[];
+  let stdinContent: string;
+
+  if (agent === 'claude') {
+    binary = 'claude';
+    if (systemPrompt) {
+      // System prompt → -p instruction (always short); user prompt → stdin (can be huge).
+      args = ['-p', systemPrompt];
+      stdinContent = prompt;
+    } else {
+      args = ['-p', prompt];
+      stdinContent = '';
+    }
+    if (model) args.push('--model', model);
+  } else {
+    // Cursor: no way to split instruction/content — combine inline and pipe via stdin.
+    binary = 'agent';
+    stdinContent = systemPrompt ? `[System: ${systemPrompt}]\n\n${prompt}` : prompt;
+    args = ['--print', '--force', '--output-format=text'];
+    if (model) args.push('--model', model);
+  }
+
+  return new Promise((resolve, reject) => {
+    const child = spawn(binary, args, { stdio: ['pipe', 'pipe', 'pipe'] });
+
+    let stdout = '';
+    let stderr = '';
+    let timedOut = false;
+
+    const killTimer = setTimeout(() => {
+      timedOut = true;
+      try { child.kill('SIGKILL'); } catch {}
+    }, AGENT_TIMEOUT_MS);
+
+    child.stdout.on('data', (d: Buffer) => { stdout += d.toString(); });
+    child.stderr.on('data', (d: Buffer) => { stderr += d.toString(); });
+
+    // Ignore EPIPE: child may close stdin before we finish writing (not an error).
+    child.stdin.on('error', () => {});
+
+    if (stdinContent) {
+      child.stdin.write(stdinContent, 'utf-8');
+    }
+    child.stdin.end();
+
+    child.on('close', (code, signal) => {
+      clearTimeout(killTimer);
+
+      if (timedOut || signal === 'SIGKILL') {
+        const msg = agent === 'claude'
+          ? 'claude timed out (120s)'
+          : 'agent timed out (120s) — try reducing --concurrency';
+        reject(new Error(msg));
+        return;
+      }
+
+      if (code !== 0) {
+        // Claude prints errors to stdout, not stderr — include both in the message.
+        const errMsg = stderr.trim() || stdout.trim() || `exited with code ${code}`;
+        reject(new Error(`${binary} failed: ${errMsg}`));
+        return;
+      }
+
+      const output = stdout.trim();
+      if (!output) {
+        reject(new Error(`${agent} returned empty response`));
+        return;
+      }
+
+      options?.onChunk?.(output.length);
+      resolve({ content: output });
+    });
+
+    child.on('error', (err: any) => {
+      clearTimeout(killTimer);
+      if (err.code === 'ENOENT') {
+        const e = new Error(`${binary} not found in PATH`) as any;
+        e.code = 'ENOENT';
+        reject(e);
+        return;
+      }
+      reject(err);
+    });
+  });
 }
 
 /**
