@@ -31,6 +31,10 @@ export const getLanguageFromFilename = (filename: string): SupportedLanguages | 
       filename.endsWith('.php5') || filename.endsWith('.php8')) {
     return SupportedLanguages.PHP;
   }
+  // Swift
+  if (filename.endsWith('.swift')) return SupportedLanguages.Swift;
+  // Objective-C (.m implementation, .mm Objective-C++)
+  if (filename.endsWith('.m') || filename.endsWith('.mm')) return SupportedLanguages.ObjectiveC;
   return null;
 };
 

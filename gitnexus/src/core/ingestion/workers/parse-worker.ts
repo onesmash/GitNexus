@@ -10,6 +10,8 @@ import CSharp from 'tree-sitter-c-sharp';
 import Go from 'tree-sitter-go';
 import Rust from 'tree-sitter-rust';
 import PHP from 'tree-sitter-php';
+import Swift from 'tree-sitter-swift';
+import ObjC from 'tree-sitter-objc';
 import { SupportedLanguages } from '../../../config/supported-languages.js';
 import { LANGUAGE_QUERIES } from '../tree-sitter-queries.js';
 import { getLanguageFromFilename } from '../utils.js';
@@ -103,6 +105,8 @@ const languageMap: Record<string, any> = {
   [SupportedLanguages.Go]: Go,
   [SupportedLanguages.Rust]: Rust,
   [SupportedLanguages.PHP]: PHP.php_only,
+  [SupportedLanguages.Swift]: Swift,
+  [SupportedLanguages.ObjectiveC]: ObjC,
 };
 
 const setLanguage = (language: SupportedLanguages, filePath: string): void => {
@@ -204,6 +208,23 @@ const isNodeExported = (node: any, name: string, language: string): boolean => {
         current = current.parent;
       }
       // Top-level functions (no parent class) are globally accessible
+      return true;
+
+    case 'swift':
+      while (current) {
+        if (current.parent) {
+          const modifiers = (current.parent.children ?? []).find((c: any) => c?.type === 'modifiers');
+          if (modifiers) {
+            const vis = (modifiers.children ?? []).find((c: any) => c?.type === 'visibility_modifier');
+            if (vis) return vis.text === 'public' || vis.text === 'open';
+            // modifiers present but no visibility modifier (e.g. only 'static') — keep walking
+          }
+        }
+        current = current.parent;
+      }
+      return false;
+
+    case 'objc':
       return true;
 
     default:

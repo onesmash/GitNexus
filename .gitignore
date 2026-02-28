@@ -56,3 +56,5 @@ repomix-output*
 
 # Design docs (local only)
 docs/plans/
+
+.cursor/

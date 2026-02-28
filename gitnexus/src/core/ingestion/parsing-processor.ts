@@ -114,6 +114,27 @@ const isNodeExported = (node: any, name: string, language: string): boolean => {
     case 'cpp':
       return false;
 
+    // Swift: public/open = exported; internal (default)/private/fileprivate = not.
+    // visibility_modifier lives inside a 'modifiers' sibling of the declaration, not an ancestor.
+    // The NEAREST visibility_modifier wins — stop as soon as one is found.
+    case 'swift':
+      while (current) {
+        if (current.parent) {
+          const modifiers = (current.parent.children ?? []).find((c: any) => c?.type === 'modifiers');
+          if (modifiers) {
+            const vis = (modifiers.children ?? []).find((c: any) => c?.type === 'visibility_modifier');
+            if (vis) return vis.text === 'public' || vis.text === 'open';
+            // modifiers present but no visibility modifier (e.g. only 'static') — keep walking
+          }
+        }
+        current = current.parent;
+      }
+      return false;
+
+    // Objective-C: no access modifiers — all symbols are effectively public
+    case 'objc':
+      return true;
+
     default:
       return false;
   }

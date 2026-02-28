@@ -396,6 +396,65 @@ export const PHP_QUERIES = `
       [(name) (qualified_name)] @heritage.trait))) @heritage
 `;
 
+// Swift queries — tree-sitter-swift grammar
+export const SWIFT_QUERIES = `
+; ── Definitions ──────────────────────────────────────────────────────────────
+(class_declaration declaration_kind: "class"     name: (type_identifier) @name) @definition.class
+(class_declaration declaration_kind: "struct"    name: (type_identifier) @name) @definition.struct
+(class_declaration declaration_kind: "enum"      name: (type_identifier) @name) @definition.enum
+(class_declaration declaration_kind: "extension" name: (user_type (type_identifier) @name)) @definition.class
+(protocol_declaration name: (type_identifier) @name) @definition.interface
+
+(source_file
+  (function_declaration name: (simple_identifier) @name) @definition.function)
+(class_body
+  (function_declaration name: (simple_identifier) @name) @definition.method)
+(class_body
+  (init_declaration "init" @name) @definition.constructor)
+
+; ── Imports ──────────────────────────────────────────────────────────────────
+(import_declaration
+  (identifier (simple_identifier) @import.source)) @import
+
+; ── Calls ────────────────────────────────────────────────────────────────────
+(call_expression (simple_identifier) @call.name) @call
+(call_expression
+  (navigation_expression
+    (navigation_suffix (simple_identifier) @call.name))) @call
+
+; ── Heritage ─────────────────────────────────────────────────────────────────
+(class_declaration
+  name: (type_identifier) @heritage.class
+  (inheritance_specifier (user_type (type_identifier) @heritage.extends))) @heritage
+`;
+
+// Objective-C queries — tree-sitter-objc grammar
+export const OBJC_QUERIES = `
+; ── Definitions ──────────────────────────────────────────────────────────────
+(class_interface     "@interface"     . (identifier) @name) @definition.class
+(class_implementation "@implementation" . (identifier) @name) @definition.class
+(protocol_declaration "@protocol"     . (identifier) @name) @definition.interface
+
+(class_interface
+  (method_declaration (identifier) @name)) @definition.method
+(class_implementation
+  (implementation_definition (method_definition (identifier) @name))) @definition.method
+(protocol_declaration
+  (method_declaration (identifier) @name)) @definition.method
+
+; ── Imports ──────────────────────────────────────────────────────────────────
+(preproc_include path: (string_literal (string_content) @import.source)) @import
+
+; ── Calls ────────────────────────────────────────────────────────────────────
+(message_expression method: (identifier) @call.name) @call
+
+; ── Heritage ─────────────────────────────────────────────────────────────────
+(class_interface "@interface" . (identifier) @heritage.class
+  superclass: (identifier) @heritage.extends) @heritage
+(class_interface "@interface" . (identifier) @heritage.class
+  (parameterized_arguments (type_name (type_identifier) @heritage.implements))) @heritage
+`;
+
 export const LANGUAGE_QUERIES: Record<SupportedLanguages, string> = {
   [SupportedLanguages.TypeScript]: TYPESCRIPT_QUERIES,
   [SupportedLanguages.JavaScript]: JAVASCRIPT_QUERIES,
@@ -407,5 +466,7 @@ export const LANGUAGE_QUERIES: Record<SupportedLanguages, string> = {
   [SupportedLanguages.CSharp]: CSHARP_QUERIES,
   [SupportedLanguages.Rust]: RUST_QUERIES,
   [SupportedLanguages.PHP]: PHP_QUERIES,
+  [SupportedLanguages.Swift]: SWIFT_QUERIES,
+  [SupportedLanguages.ObjectiveC]: OBJC_QUERIES,
 };
  
