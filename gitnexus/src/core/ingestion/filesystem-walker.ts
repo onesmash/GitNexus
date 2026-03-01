@@ -22,7 +22,7 @@ export interface FilePath {
 const READ_CONCURRENCY = 32;
 
 /** Skip files larger than 512KB — they're usually generated/vendored and crash tree-sitter */
-const MAX_FILE_SIZE = 512 * 1024;
+const MAX_FILE_SIZE = 1024 * 1024;
 
 /**
  * Phase 1: Scan repository — stat files to get paths + sizes, no content loaded.
