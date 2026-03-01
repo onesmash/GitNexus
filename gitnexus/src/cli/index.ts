@@ -5,18 +5,37 @@
 if (!process.env.NODE_OPTIONS?.includes('--max-old-space-size')) {
   const execArgv = process.execArgv.join(' ');
   if (!execArgv.includes('--max-old-space-size')) {
-    // Re-spawn with a larger heap (8 GB)
-    const { execFileSync } = await import('node:child_process');
-    try {
-      execFileSync(process.execPath, ['--max-old-space-size=8192', ...process.argv.slice(1)], {
-        stdio: 'inherit',
+    // Re-spawn with a larger heap (8 GB).
+    // Use spawn (not execFileSync) so we can filter ONNX Runtime's cleanup crash
+    // from stderr and treat SIGABRT after --embeddings as a clean exit (#38, #40).
+    const { spawn } = await import('node:child_process');
+    const child = spawn(
+      process.execPath,
+      ['--max-old-space-size=8192', ...process.argv.slice(1)],
+      {
+        stdio: ['inherit', 'inherit', 'pipe'],
         env: { ...process.env, NODE_OPTIONS: `${process.env.NODE_OPTIONS || ''} --max-old-space-size=8192`.trim() },
+      },
+    );
+    // Pass child stderr to our stderr, stripping ONNX Runtime cleanup noise.
+    child.stderr?.on('data', (chunk: Buffer) => {
+      const text = chunk.toString();
+      if (!text.includes('libc++abi: terminating') && !text.includes('mutex lock failed')) {
+        process.stderr.write(chunk);
+      }
+    });
+    const exitCode = await new Promise<number>(resolve => {
+      child.on('close', (code, signal) => {
+        // ONNX Runtime crashes with SIGABRT during atexit cleanup after embeddings.
+        // The analysis data is already written; treat this specific crash as success.
+        if (signal === 'SIGABRT' && process.argv.includes('--embeddings')) {
+          resolve(0);
+        } else {
+          resolve(code ?? (signal ? 1 : 0));
+        }
       });
-      process.exit(0);
-    } catch (e: any) {
-      // If the child exited with an error code, propagate it
-      process.exit(e.status ?? 1);
-    }
+    });
+    process.exit(exitCode);
   }
 }
 

@@ -20,7 +20,7 @@ Keep this managed block so 'openspec update' can refresh the instructions.
 <!-- gitnexus:start -->
 # GitNexus MCP
 
-This project is indexed by GitNexus as **GitNexus** (1452 symbols, 3715 relationships, 111 execution flows).
+This project is indexed by GitNexus as **GitNexus** (1473 symbols, 3738 relationships, 112 execution flows).
 
 ## Always Start Here
 
@@ -40,5 +40,6 @@ This project is indexed by GitNexus as **GitNexus** (1452 symbols, 3715 relation
 | Rename / extract / split / refactor | `.claude/skills/gitnexus/gitnexus-refactoring/SKILL.md` |
 | Tools, resources, schema reference | `.claude/skills/gitnexus/gitnexus-guide/SKILL.md` |
 | Index, status, clean, wiki CLI commands | `.claude/skills/gitnexus/gitnexus-cli/SKILL.md` |
+| Generate wiki documentation | `.claude/skills/gitnexus/gitnexus-wiki/SKILL.md` |
 
 <!-- gitnexus:end -->

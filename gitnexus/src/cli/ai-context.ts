@@ -60,6 +60,7 @@ This project is indexed by GitNexus as **${projectName}** (${stats.nodes || 0} s
 | Rename / extract / split / refactor | \`.claude/skills/gitnexus/gitnexus-refactoring/SKILL.md\` |
 | Tools, resources, schema reference | \`.claude/skills/gitnexus/gitnexus-guide/SKILL.md\` |
 | Index, status, clean, wiki CLI commands | \`.claude/skills/gitnexus/gitnexus-cli/SKILL.md\` |
+| Generate wiki documentation | \`.claude/skills/gitnexus/gitnexus-wiki/SKILL.md\` |
 
 ${GITNEXUS_END_MARKER}`;
 }
@@ -148,6 +149,10 @@ async function installSkills(repoPath: string): Promise<string[]> {
     {
       name: 'gitnexus-cli',
       description: 'Use when the user needs to run GitNexus CLI commands like analyze/index a repo, check status, clean the index, generate a wiki, or list indexed repos. Examples: "Index this repo", "Reanalyze the codebase", "Generate a wiki"',
+    },
+    {
+      name: 'gitnexus-wiki',
+      description: 'Use when the user wants to generate wiki documentation for the codebase. Examples: "Generate wiki", "Document this codebase", "Create documentation", "Write docs for this project"',
     },
   ];
 

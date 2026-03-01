@@ -13,7 +13,6 @@ import { initKuzu, loadGraphToKuzu, getKuzuStats, executeQuery, executeWithReuse
 // Embedding imports are lazy (dynamic import) so onnxruntime-node is never
 // loaded when embeddings are not requested. This avoids crashes on Node
 // versions whose ABI is not yet supported by the native binary (#89).
-// disposeEmbedder intentionally not called — ONNX Runtime segfaults on cleanup (see #38)
 import { getStoragePaths, saveMeta, loadMeta, addToGitignore, registerRepo, getGlobalRegistryPath } from '../storage/repo-manager.js';
 import { getCurrentCommit, isGitRepo, getGitRoot } from '../storage/git.js';
 import { generateAIContextFiles } from './ai-context.js';
@@ -48,7 +47,7 @@ export interface AnalyzeOptions {
 }
 
 /** Threshold: auto-skip embeddings for repos with more nodes than this */
-const EMBEDDING_NODE_LIMIT = 50_000;
+const EMBEDDING_NODE_LIMIT = 100_000;
 
 const PHASE_LABELS: Record<string, string> = {
   extracting: 'Scanning files',
@@ -112,6 +111,7 @@ export const analyzeCommand = async (
     autopadding: true,
     clearOnComplete: false,
     stopOnComplete: false,
+    stream: process.stdout,
   }, cliProgress.Presets.shades_grey);
 
   bar.start(100, 0, { phase: 'Initializing...' });
@@ -259,6 +259,7 @@ export const analyzeCommand = async (
     updateBar(90, 'Loading embedding model...');
     const t0Emb = Date.now();
     const { runEmbeddingPipeline } = await import('../core/embeddings/embedding-pipeline.js');
+    const { disposeEmbedder } = await import('../core/embeddings/embedder.js');
     await runEmbeddingPipeline(
       executeQuery,
       executeWithReusedStatement,
@@ -271,6 +272,11 @@ export const analyzeCommand = async (
       cachedEmbeddingNodeIds.size > 0 ? cachedEmbeddingNodeIds : undefined,
     );
     embeddingTime = ((Date.now() - t0Emb) / 1000).toFixed(1);
+    // Explicitly release the ORT session before process exit. This prevents
+    // the "mutex lock failed: Invalid argument" crash (#38, #40) caused by
+    // ORT GC finalizers running after OrtEnv's static destructor has already
+    // destroyed the thread-pool mutex.
+    try { await disposeEmbedder(); } catch { /* ignore disposal errors */ }
   }
 
   // ── Phase 5: Finalize (98–100%) ───────────────────────────────────
@@ -315,9 +321,6 @@ export const analyzeCommand = async (
   });
 
   await closeKuzu();
-  // Note: we intentionally do NOT call disposeEmbedder() here.
-  // ONNX Runtime's native cleanup segfaults on macOS and some Linux configs.
-  // Since the process exits immediately after, Node.js reclaims everything.
 
   const totalTime = ((Date.now() - t0Global) / 1000).toFixed(1);
 
@@ -364,9 +367,8 @@ export const analyzeCommand = async (
 
   console.log('');
 
-  // ONNX Runtime registers native atexit hooks that segfault during process
-  // shutdown on macOS (#38) and some Linux configs (#40). Force-exit to
-  // bypass them when embeddings were loaded.
+  // Force-exit when embeddings were loaded to skip any remaining ORT atexit
+  // hooks that may still crash even after explicit session disposal (#38, #40).
   if (!embeddingSkipped) {
     process.exit(0);
   }
