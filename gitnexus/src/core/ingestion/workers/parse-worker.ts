@@ -200,127 +200,22 @@ const setLanguage = (language: SupportedLanguages, filePath: string): void => {
   parser.setLanguage(lang);
 };
 
-<<<<<<< HEAD
 // isNodeExported imported from ../export-detection.js (shared module)
-=======
-// ============================================================================
-// Export detection (copied — needs AST parent traversal, can't cross threads)
-// ============================================================================
-
-const isNodeExported = (node: any, name: string, language: string): boolean => {
-  let current = node;
-
-  switch (language) {
-    case 'javascript':
-    case 'typescript':
-      while (current) {
-        const type = current.type;
-        if (type === 'export_statement' ||
-            type === 'export_specifier' ||
-            type === 'lexical_declaration' && current.parent?.type === 'export_statement') {
-          return true;
-        }
-        if (current.text?.startsWith('export ')) {
-          return true;
-        }
-        current = current.parent;
-      }
-      return false;
-
-    case 'python':
-      return !name.startsWith('_');
-
-    case 'java':
-      while (current) {
-        if (current.parent) {
-          const parent = current.parent;
-          for (let i = 0; i < parent.childCount; i++) {
-            const child = parent.child(i);
-            if (child?.type === 'modifiers' && child.text?.includes('public')) {
-              return true;
-            }
-          }
-          if (parent.type === 'method_declaration' || parent.type === 'constructor_declaration') {
-            if (parent.text?.trimStart().startsWith('public')) {
-              return true;
-            }
-          }
-        }
-        current = current.parent;
-      }
-      return false;
-
-    case 'csharp':
-      while (current) {
-        if (current.type === 'modifier' || current.type === 'modifiers') {
-          if (current.text?.includes('public')) return true;
-        }
-        current = current.parent;
-      }
-      return false;
-
-    case 'go':
-      if (name.length === 0) return false;
-      const first = name[0];
-      return first === first.toUpperCase() && first !== first.toLowerCase();
-
-    case 'rust':
-      while (current) {
-        if (current.type === 'visibility_modifier') {
-          if (current.text?.includes('pub')) return true;
-        }
-        current = current.parent;
-      }
-      return false;
-
-    case 'c':
-    case 'cpp':
-      return false;
-
-    case 'php':
-      // Top-level classes/interfaces/traits are always accessible
-      // Methods/properties are exported only if they have 'public' modifier
-      while (current) {
-        if (current.type === 'class_declaration' ||
-            current.type === 'interface_declaration' ||
-            current.type === 'trait_declaration' ||
-            current.type === 'enum_declaration') {
-          return true;
-        }
-        if (current.type === 'visibility_modifier') {
-          return current.text === 'public';
-        }
-        current = current.parent;
-      }
-      // Top-level functions (no parent class) are globally accessible
-      return true;
-
-    case 'swift':
-      while (current) {
-        if (current.parent) {
-          const modifiers = (current.parent.children ?? []).find((c: any) => c?.type === 'modifiers');
-          if (modifiers) {
-            const vis = (modifiers.children ?? []).find((c: any) => c?.type === 'visibility_modifier');
-            if (vis) return vis.text === 'public' || vis.text === 'open';
-            // modifiers present but no visibility modifier (e.g. only 'static') — keep walking
-          }
-        }
-        current = current.parent;
-      }
-      return false;
-
-    case 'objc':
-      return true;
-
-    default:
-      return false;
-  }
-};
->>>>>>> a64d7df (feat: add Swift and Objective-C language support)
 
 // ============================================================================
 // Enclosing function detection (for call extraction)
 // ============================================================================
+
+const FUNCTION_NODE_TYPES = new Set([
+  'function_declaration', 'arrow_function', 'function_expression',
+  'method_definition', 'generator_function_declaration',
+  'function_definition', 'async_function_declaration', 'async_arrow_function',
+  'method_declaration', 'constructor_declaration',
+  'local_function_statement', 'function_item', 'impl_item',
+  'anonymous_function_creation_expression',  // PHP anonymous functions
+  'init_declaration',                        // Swift initializers
+]);
+
 
 /** Walk up AST to find enclosing function, return its generateId or null for top-level */
 const findEnclosingFunctionId = (node: any, filePath: string): string | null => {

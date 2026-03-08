@@ -503,7 +503,6 @@ export const PHP_QUERIES = `
       [(name) (qualified_name)] @heritage.trait))) @heritage
 `;
 
-<<<<<<< HEAD
 // Ruby queries - works with tree-sitter-ruby
 // NOTE: Ruby uses `call` for require, include, extend, prepend, attr_* etc.
 // These are all captured as @call and routed in JS post-processing:
@@ -629,51 +628,42 @@ export const KOTLIN_QUERIES = `
       (user_type (type_identifier) @heritage.extends)))) @heritage
 `;
 
-// Swift queries - works with tree-sitter-swift
+// Swift queries — tree-sitter-swift grammar
 export const SWIFT_QUERIES = `
-; Classes
-(class_declaration "class" name: (type_identifier) @name) @definition.class
-
-; Structs
-(class_declaration "struct" name: (type_identifier) @name) @definition.struct
-
-; Enums
-(class_declaration "enum" name: (type_identifier) @name) @definition.enum
-
-; Extensions (mapped to class — no dedicated label in schema)
-(class_declaration "extension" name: (user_type (type_identifier) @name)) @definition.class
-
-; Actors
-(class_declaration "actor" name: (type_identifier) @name) @definition.class
-
-; Protocols (mapped to interface)
+; ── Definitions ──────────────────────────────────────────────────────────────
+(class_declaration declaration_kind: "class"     name: (type_identifier) @name) @definition.class
+(class_declaration declaration_kind: "struct"    name: (type_identifier) @name) @definition.struct
+(class_declaration declaration_kind: "enum"      name: (type_identifier) @name) @definition.enum
+(class_declaration declaration_kind: "actor"     name: (type_identifier) @name) @definition.class
+(class_declaration declaration_kind: "extension" name: (user_type (type_identifier) @name)) @definition.class
 (protocol_declaration name: (type_identifier) @name) @definition.interface
-
-; Type aliases
 (typealias_declaration name: (type_identifier) @name) @definition.type
 
-; Functions (top-level and methods)
-(function_declaration name: (simple_identifier) @name) @definition.function
+(source_file
+  (function_declaration name: (simple_identifier) @name) @definition.function)
+(class_body
+  (function_declaration name: (simple_identifier) @name) @definition.method)
+(enum_class_body
+  (function_declaration name: (simple_identifier) @name) @definition.method)
+(protocol_body
+  (protocol_function_declaration name: (simple_identifier) @name) @definition.method)
 
-; Protocol method declarations
-(protocol_function_declaration name: (simple_identifier) @name) @definition.method
+(class_body
+  (init_declaration "init" @name) @definition.constructor)
+(enum_class_body
+  (init_declaration "init" @name) @definition.constructor)
 
-; Initializers
-(init_declaration) @definition.constructor
+; ── Imports ──────────────────────────────────────────────────────────────────
+(import_declaration
+  (identifier (simple_identifier) @import.source)) @import
 
-; Properties (stored and computed)
-(property_declaration (pattern (simple_identifier) @name)) @definition.property
-
-; Imports
-(import_declaration (identifier (simple_identifier) @import.source)) @import
-
-; Calls - direct function calls
+; ── Calls ────────────────────────────────────────────────────────────────────
 (call_expression (simple_identifier) @call.name) @call
+(call_expression
+  (navigation_expression
+    (navigation_suffix (simple_identifier) @call.name))) @call
 
-; Calls - member/navigation calls (obj.method())
-(call_expression (navigation_expression (navigation_suffix (simple_identifier) @call.name))) @call
-
-; Heritage - class/struct/enum inheritance and protocol conformance
+; ── Heritage ─────────────────────────────────────────────────────────────────
 (class_declaration name: (type_identifier) @heritage.class
   (inheritance_specifier inherits_from: (user_type (type_identifier) @heritage.extends))) @heritage
 
@@ -694,6 +684,7 @@ export const OBJC_QUERIES = `
 (class_implementation "@implementation" . (identifier) @name) @definition.class
 (protocol_declaration "@protocol"     . (identifier) @name) @definition.interface
 
+; Anchor first identifier after method_type to avoid multi-keyword selector duplicates
 (class_interface
   (method_declaration (method_type) . (identifier) @name)) @definition.method
 (class_implementation
@@ -718,6 +709,9 @@ export const OBJC_QUERIES = `
   superclass: (identifier) @heritage.extends) @heritage
 (class_interface "@interface" . (identifier) @heritage.class
   (parameterized_arguments (type_name (type_identifier) @heritage.implements))) @heritage
+; Protocol inheritance
+(protocol_declaration "@protocol" . (identifier) @heritage.class
+  (protocol_reference_list (identifier) @heritage.extends)) @heritage
 `;
 
 export const LANGUAGE_QUERIES: Record<SupportedLanguages, string> = {
