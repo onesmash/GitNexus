@@ -5,7 +5,7 @@
  */
 
 import path from 'path';
-import { execFileSync } from 'child_process';
+import { execFileSync, spawnSync } from 'child_process';
 import v8 from 'v8';
 import cliProgress from 'cli-progress';
 import { runPipelineFromRepo } from '../core/ingestion/pipeline.js';
@@ -32,13 +32,38 @@ function ensureHeap(): boolean {
   const v8Heap = v8.getHeapStatistics().heap_size_limit;
   if (v8Heap >= HEAP_MB * 1024 * 1024 * 0.9) return false;
 
-  try {
-    execFileSync(process.execPath, [HEAP_FLAG, ...process.argv.slice(1)], {
-      stdio: 'inherit',
-      env: { ...process.env, NODE_OPTIONS: `${nodeOpts} ${HEAP_FLAG}`.trim() },
+  const args = [HEAP_FLAG, ...process.argv.slice(1)];
+  const env = { ...process.env, NODE_OPTIONS: `${nodeOpts} ${HEAP_FLAG}`.trim() };
+  const hasEmbeddings = process.argv.includes('--embeddings');
+
+  if (hasEmbeddings) {
+    // ONNX Runtime's native atexit hooks cause SIGABRT on macOS/some Linux
+    // configs when the process exits after running embeddings (#38, #40).
+    // Use spawnSync with piped stderr so we can filter the libc++abi noise
+    // and treat SIGABRT as a clean exit in this context.
+    const result = spawnSync(process.execPath, args, {
+      stdio: ['inherit', 'inherit', 'pipe'],
+      env,
     });
-  } catch (e: any) {
-    process.exitCode = e.status ?? 1;
+    const stderrOutput = result.stderr?.toString() ?? '';
+    // Forward any stderr that isn't the known ONNX crash message
+    const filtered = stderrOutput
+      .split('\n')
+      .filter(line => !line.includes('libc++abi') && !line.includes('terminating due to uncaught exception'))
+      .join('\n');
+    if (filtered.trim()) process.stderr.write(filtered);
+    // SIGABRT after successful embeddings run is expected — treat as success
+    const isOnnxCrash = result.signal === 'SIGABRT' || result.status === 134;
+    process.exitCode = isOnnxCrash ? 0 : (result.status ?? 0);
+  } else {
+    try {
+      execFileSync(process.execPath, args, {
+        stdio: 'inherit',
+        env,
+      });
+    } catch (e: any) {
+      process.exitCode = e.status ?? 1;
+    }
   }
   return true;
 }
