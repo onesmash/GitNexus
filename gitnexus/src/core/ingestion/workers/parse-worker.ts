@@ -191,6 +191,13 @@ const languageMap: Record<string, any> = {
   ...(ObjC ? { [SupportedLanguages.ObjectiveC]: ObjC } : {}),
 };
 
+const isLanguageAvailable = (language: SupportedLanguages, filePath: string): boolean => {
+  const key = language === SupportedLanguages.TypeScript && filePath.endsWith('.tsx')
+    ? `${language}:tsx`
+    : language;
+  return key in languageMap && languageMap[key] != null;
+};
+
 const setLanguage = (language: SupportedLanguages, filePath: string): void => {
   const key = language === SupportedLanguages.TypeScript && filePath.endsWith('.tsx')
     ? `${language}:tsx`
@@ -206,15 +213,6 @@ const setLanguage = (language: SupportedLanguages, filePath: string): void => {
 // Enclosing function detection (for call extraction)
 // ============================================================================
 
-const FUNCTION_NODE_TYPES = new Set([
-  'function_declaration', 'arrow_function', 'function_expression',
-  'method_definition', 'generator_function_declaration',
-  'function_definition', 'async_function_declaration', 'async_arrow_function',
-  'method_declaration', 'constructor_declaration',
-  'local_function_statement', 'function_item', 'impl_item',
-  'anonymous_function_creation_expression',  // PHP anonymous functions
-  'init_declaration',                        // Swift initializers
-]);
 
 
 /** Walk up AST to find enclosing function, return its generateId or null for top-level */

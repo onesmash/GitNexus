@@ -653,6 +653,9 @@ export const SWIFT_QUERIES = `
 (enum_class_body
   (init_declaration "init" @name) @definition.constructor)
 
+; Properties (stored and computed)
+(property_declaration (pattern (simple_identifier) @name)) @definition.property
+
 ; ── Imports ──────────────────────────────────────────────────────────────────
 (import_declaration
   (identifier (simple_identifier) @import.source)) @import
